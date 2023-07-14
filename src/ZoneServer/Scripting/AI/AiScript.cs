@@ -156,7 +156,12 @@ namespace Melia.Zone.Scripting.AI
 				if (!this.IsHostileTowards(potentialEnemy))
 					continue;
 
-				if (potentialEnemy.Components.Get<BuffComponent>().Has(BuffId.Cloaking_Buff))
+				var buffComponent = potentialEnemy.Components.Get<BuffComponent>();
+
+				if (buffComponent.Has(BuffId.Cloaking_Buff))
+					continue;
+
+				if (buffComponent.Has(BuffId.WideMiasma_Buff))
 					continue;
 
 				var handle = potentialEnemy.Handle;

@@ -4,6 +4,7 @@ using System.Linq;
 using Melia.Shared.Tos.Const;
 using Melia.Zone.Buffs;
 using Melia.Zone.Network;
+using Melia.Zone.Skills;
 using Yggdrasil.Scheduling;
 
 namespace Melia.Zone.World.Actors.CombatEntities.Components

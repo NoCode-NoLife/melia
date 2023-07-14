@@ -1,6 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-using Melia.Shared.Data.Database;
 using Melia.Shared.L10N;
 using Melia.Shared.Network.Helpers;
 using Melia.Shared.ObjectProperties;
@@ -9,7 +9,6 @@ using Melia.Shared.Tos.Const;
 using Melia.Shared.World;
 using Melia.Zone.Network;
 using Melia.Zone.Scripting.Dialogues;
-using Melia.Zone.Skills;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using Melia.Zone.World.Actors.Monsters;
@@ -316,6 +315,12 @@ namespace Melia.Zone.World.Actors.Characters
 			get => _localizer ?? ZoneServer.Instance.MultiLocalization.GetDefault();
 			private set => _localizer = value;
 		}
+
+		/// <summary>
+		/// Returns the character's list of placed traps
+		/// </summary>
+		public List<Mob> PlacedTraps { get; set; } = new List<Mob>();
+
 		private Localizer _localizer;
 
 		/// <summary>
@@ -635,6 +640,7 @@ namespace Melia.Zone.World.Actors.Characters
 				this.MapId = mapId;
 				_warping = true;
 
+				this.CleanPlacedTraps();
 				Send.ZC_MOVE_ZONE(this.Connection);
 			}
 		}
@@ -673,6 +679,8 @@ namespace Melia.Zone.World.Actors.Characters
 
 			var channelId = Math2.Clamp(0, availableZones.Length, _destinationChannelId);
 			var serverInfo = availableZones[channelId];
+
+			this.CleanPlacedTraps();
 
 			Send.ZC_MOVE_ZONE_OK(this, channelId, serverInfo.Ip, serverInfo.Port, this.MapId);
 		}
@@ -738,6 +746,12 @@ namespace Melia.Zone.World.Actors.Characters
 		{
 			if (hpAmount == 0 && spAmount == 0)
 				return;
+
+			// 30% of healing reduced
+			if (Buffs.Has(BuffId.DecreaseHeal_Debuff))
+			{
+				hpAmount *= 0.7f;
+			}
 
 			this.ModifyHpSafe(hpAmount, out var hp, out var priority);
 			this.Properties.Modify(PropertyName.SP, spAmount);
@@ -914,7 +928,7 @@ namespace Melia.Zone.World.Actors.Characters
 
 					if (monster is ICombatEntity entity)
 					{
-						Send.ZC_FACTION(this.Connection, monster, entity.Faction);
+						Send.ZC_FACTION(this, monster, entity.Faction);
 
 						if (entity.Components.Get<BuffComponent>()?.Count != 0)
 							Send.ZC_BUFF_LIST(this.Connection, entity);
@@ -1220,8 +1234,9 @@ namespace Melia.Zone.World.Actors.Characters
 		{
 			this.Properties.SetFloat(PropertyName.HP, 0);
 			//this.Died?.Invoke(this, killer);
+			this.CleanPlacedTraps();
 
-			Send.ZC_DEAD(this);
+			Send.ZC_DEAD(this, this.Position);
 
 			_resurrectDialogTimer = ResurrectDialogDelay;
 		}
@@ -1334,6 +1349,16 @@ namespace Melia.Zone.World.Actors.Characters
 		{
 			var stamina = (this.Properties.Stamina -= staminaUsage);
 			Send.ZC_STAMINA(this, stamina);
+		}
+
+		private void CleanPlacedTraps()
+		{
+			foreach(var trap in this.PlacedTraps)
+			{
+				this.Map.RemoveMonster(trap);
+			}
+
+			this.PlacedTraps.Clear();
 		}
 	}
 }
