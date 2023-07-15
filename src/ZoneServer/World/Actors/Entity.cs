@@ -140,6 +140,7 @@ namespace Melia.Zone.World.Actors
 		public static bool TrySpendSp(this ICombatEntity entity, Skill skill)
 		{
 			var spendSp = skill.Properties.GetFloat(PropertyName.SpendSP);
+
 			return entity.TrySpendSp(spendSp);
 		}
 
@@ -163,6 +164,7 @@ namespace Melia.Zone.World.Actors
 				return false;
 
 			character.ModifySp(-amount);
+
 			return true;
 		}
 

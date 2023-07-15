@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ using Melia.Zone.World.Actors;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using Melia.Zone.World.Actors.Monsters;
+using Melia.Zone.World.Groups;
 using Melia.Zone.World.Items;
 using Melia.Zone.World.Maps;
 using Yggdrasil.Logging;
@@ -103,6 +105,7 @@ namespace Melia.Zone.Network
 
 			map.AddCharacter(character);
 			conn.LoggedIn = true;
+			character.UpdatePartyInformation();
 
 			ZoneServer.Instance.Database.UpdateLoginState(conn.Account.Id, character.DbId, LoginState.Zone);
 
@@ -279,6 +282,10 @@ namespace Melia.Zone.Network
 
 			Send.ZC_SAVE_INFO(conn);
 			Send.ZC_MOVE_BARRACK(conn);
+
+			var character = conn.SelectedCharacter;
+			if (character != null)
+				character.PartyMemberIsOnline(false);
 		}
 
 		/// <summary>
@@ -1766,6 +1773,7 @@ namespace Melia.Zone.Network
 			character.Jobs.Remove(oldJobId);
 			character.Jobs.Add(newJob);
 			character.JobId = newJob.Id;
+			character.PartyMemberIsOnline(false);
 
 			// I'd prefer to let the player keep playing after the switch,
 			// but the intended behavior is apparently that you get DCed
@@ -1795,6 +1803,19 @@ namespace Melia.Zone.Network
 		[PacketHandler(Op.CZ_LOAD_COMPLETE)]
 		public void CZ_LOAD_COMPLETE(IZoneConnection conn, Packet packet)
 		{
+			var character = conn.SelectedCharacter;
+			var party = ZoneServer.Instance.World.GetParty(character.PartyId);
+			
+			if (party != null && conn.Party == null)
+			{
+				conn.Party = party;
+
+				if (party.Owner == null)				
+					ZoneServer.Instance.World.Parties.UpdatePartyLeader(party, character);
+				
+				party.NoticiateExistance(character);
+			}
+
 			Send.ZC_LOAD_COMPLETE(conn);
 		}
 
@@ -2533,6 +2554,118 @@ namespace Melia.Zone.Network
 			// sub-weapon attacks, so we don't need this information. The
 			// same packet also appears to be sent twice for some reason.
 			// We'll just leave this empty for now.
+		}
+
+		/// <summary>
+		/// Accepting a party invite
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_PARTY_INVITE_ACCEPT)]
+		public void CZ_PARTY_INVITE_ACCEPT(IZoneConnection conn, Packet packet)
+		{
+			var b1 = packet.GetByte();
+			var teamName = packet.GetString();
+			var character = conn.SelectedCharacter;
+			var sender = ZoneServer.Instance.World.GetCharacterByTeamName(teamName);
+
+			if (character.Connection.Party == null && sender != null)
+			{
+				var party = sender.Connection.Party;
+				if (party == null)
+				{
+					party = ZoneServer.Instance.World.Parties.Create(sender);
+				}
+				party.AddMember(character);
+			}
+		}
+
+		/// <summary>
+		/// Rejecting a party invite
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_PARTY_INVITE_CANCEL)]
+		public void CZ_PARTY_INVITE_CANCEL(IZoneConnection conn, Packet packet)
+		{
+			var b1 = packet.GetByte();
+			var teamName = packet.GetString();
+
+			var character = conn.SelectedCharacter;
+			var partyInviter = ZoneServer.Instance.World.GetCharacterByTeamName(teamName);
+
+			if (partyInviter != null)
+			{
+				Send.ZC_ADDON_MSG(partyInviter, AddonMessage.PARTY_INVITE_CANCEL, 0, character.TeamName);
+			}
+		}
+
+		/// <summary>
+		/// Leaving a party
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_PARTY_OUT)]
+		public void CZ_PARTY_OUT(IZoneConnection conn, Packet packet)
+		{
+			var character = conn.SelectedCharacter;
+			var party = character.Connection.Party;
+
+			if (party != null)
+			{
+				party.RemoveMember(character);
+			}
+		}
+
+		/// <summary>
+		/// Changing Party Settings
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_PARTY_PROP_CHANGE)]
+		public void CZ_PARTY_PROP_CHANGE(IZoneConnection conn, Packet packet)
+		{
+			var b1 = packet.GetByte();
+			var type = packet.GetInt();
+			var b2 = packet.GetByte();
+			var b3 = packet.GetByte();
+			var s1 = packet.GetShort();
+			var value = packet.GetString();
+
+			var character = conn.SelectedCharacter;
+			var party = character.Connection.Party;
+
+			if (party != null && party.LeaderDbId == character.DbId)
+			{
+				party.UpdateSetting(type, value);
+			}
+		}
+
+		/// <summary>
+		/// Answer to a party join request by link
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_PARTY_JOIN_BY_LINK)]
+		public void CZ_PARTY_JOIN_BY_LINK(IZoneConnection conn, Packet packet)
+		{
+			var unkByte = packet.GetByte();
+			var partyId = packet.GetShort();
+
+			var party = ZoneServer.Instance.World.Parties.GetParty(partyId);
+			var character = conn.SelectedCharacter;
+
+			if (character.PartyId != 0)
+				return;
+
+			if (party != null)
+			{
+				party.AddMember(character);
+				character.PartyId = partyId;
+			} else
+			{
+				character.ServerMessage(Localization.Get("Coud't not join the party."));
+			}
 		}
 
 		/// <summary>

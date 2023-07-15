@@ -10,7 +10,6 @@ using Melia.Shared.Tos.Const;
 using Melia.Shared.World;
 using Melia.Zone.Network;
 using Melia.Zone.Scripting.Dialogues;
-using Melia.Zone.Skills;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using Melia.Zone.World.Actors.Monsters;
@@ -318,6 +317,9 @@ namespace Melia.Zone.World.Actors.Characters
 		/// </summary>
 		public event Action<Character> SitStatusChanged;
 
+		public long PartyId { get; set; }
+		public long GuildId { get; set; }
+
 		/// <summary>
 		/// Creates new character.
 		/// </summary>
@@ -536,6 +538,7 @@ namespace Melia.Zone.World.Actors.Characters
 			{
 				this.MapId = mapId;
 				_warping = true;
+				this.UpdatePartyInformation();
 
 				Send.ZC_MOVE_ZONE(this.Connection);
 			}
@@ -644,6 +647,7 @@ namespace Melia.Zone.World.Actors.Characters
 			this.ModifyHpSafe(hpAmount, out var hp, out var priority);
 			this.Properties.Modify(PropertyName.SP, spAmount);
 
+			this.UpdatePartyInformation();
 			Send.ZC_UPDATE_ALL_STATUS(this, priority);
 		}
 
@@ -679,6 +683,7 @@ namespace Melia.Zone.World.Actors.Characters
 		public void ModifyHp(int amount)
 		{
 			this.ModifyHpSafe(amount, out var hp, out var priority);
+			this.UpdatePartyInformation();
 			Send.ZC_ADD_HP(this, amount, hp, priority);
 		}
 
@@ -690,6 +695,7 @@ namespace Melia.Zone.World.Actors.Characters
 		public void ModifySp(float amount)
 		{
 			var sp = this.Properties.Modify(PropertyName.SP, amount);
+			this.UpdatePartyInformation();
 			Send.ZC_UPDATE_SP(this, sp, true);
 		}
 
@@ -1114,7 +1120,9 @@ namespace Melia.Zone.World.Actors.Characters
 				return true;
 
 			this.Components.Get<CombatComponent>().SetAttackState(true);
-			this.ModifyHpSafe(-damage, out _, out _);
+			this.ModifyHpSafe(-damage, out var newHp, out var priority);
+
+			this.UpdatePartyInformation();
 
 			// Kill monster if it reached 0 HP.
 			if (this.Hp == 0)
@@ -1214,7 +1222,13 @@ namespace Melia.Zone.World.Actors.Characters
 			Send.ZC_ITEM_GET(this, itemMonster);
 
 			// Add the item to the inventory
-			this.Inventory.Add(itemMonster.Item, InventoryAddType.PickUp);
+
+			var party = this.Connection.Party;
+
+			if (party != null)
+				party.GiveItem(this, itemMonster.Item, InventoryAddType.PickUp);
+			else
+				this.Inventory.Add(itemMonster.Item, InventoryAddType.PickUp);
 
 			// Remove it from the map, so it can't be picked up again.
 			this.Map.RemoveMonster(itemMonster);
@@ -1238,6 +1252,64 @@ namespace Melia.Zone.World.Actors.Characters
 		public void PlayEffect(string packetString)
 		{
 			Send.ZC_NORMAL.PlayEffect(this, packetString);
+		}
+
+		/// <summary>
+		/// Reduces character's stamina and updates the client.
+		/// </summary>
+		/// <param name="staminaUsage"></param>
+		private void UseStamina(int staminaUsage)
+		{
+			var stamina = (this.Properties.Stamina -= staminaUsage);
+			Send.ZC_STAMINA(this, stamina);
+		}
+
+		/// <summary>
+		/// Updates the member property and sends the packet to update values
+		/// </summary>
+		public void UpdatePartyInformation()
+		{
+			if (this.Connection.Party != null)
+			{
+				var member = this.Connection.Party.GetMember(this.ObjectId);
+				if (member != null)
+				{
+					member.UpdateValues(this);
+					Send.ZC_PARTY_INFO(this, this.Connection.Party);
+				}
+
+				Send.ZC_PARTY_INST_INFO(this.Connection.Party);
+			}
+		}
+
+		/// <summary>
+		/// Updates the member property IsOnline
+		/// </summary>
+		public void PartyMemberIsOnline(bool value)
+		{
+			if (this.Connection.Party != null)
+			{
+				var member = this.Connection.Party.GetMember(this.ObjectId);
+				if (member != null)
+				{
+					member.UpdateIsOnline(value);
+					Send.ZC_PARTY_INFO(this, this.Connection.Party, true);
+				}
+
+				Send.ZC_PARTY_LIST(this.Connection.Party);
+				Send.ZC_PARTY_INST_INFO(this.Connection.Party);
+			}
+		}
+
+		/// <summary>
+		/// Sends an addon message
+		/// </summary>
+		/// <param name="function"></param>
+		/// <param name="stringParameter"></param>
+		/// <param name="intParameter"></param>
+		public void AddonMessage(string function, string stringParameter = null, int intParameter = 0)
+		{
+			Send.ZC_ADDON_MSG(this, function, intParameter, stringParameter);
 		}
 	}
 }
