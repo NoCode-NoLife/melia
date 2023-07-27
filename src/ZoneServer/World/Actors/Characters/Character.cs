@@ -14,6 +14,7 @@ using Melia.Zone.Skills;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using Melia.Zone.World.Actors.Monsters;
+using Melia.Zone.World.Storage;
 using Yggdrasil.Composition;
 using Yggdrasil.Logging;
 using Yggdrasil.Scheduling;
@@ -150,6 +151,11 @@ namespace Melia.Zone.World.Actors.Characters
 		/// Gets or sets whether the character is sitting.
 		/// </summary>
 		public bool IsSitting { get; set; }
+
+		/// <summary>
+		/// Returns the characters's personal storage.
+		/// </summary>
+		public PersonalStorage PersonalStorage { get; }
 
 		/// <summary>
 		/// The character's inventory.
@@ -336,6 +342,7 @@ namespace Melia.Zone.World.Actors.Characters
 			this.Components.Add(this.Movement = new MovementComponent(this));
 
 			this.Properties = new CharacterProperties(this);
+			this.PersonalStorage = new PersonalStorage(this);
 
 			this.AddSessionObjects();
 		}

@@ -10,6 +10,7 @@ using Melia.Shared.Tos.Const;
 using Melia.Shared.Tos.Properties;
 using Melia.Shared.World;
 using Melia.Zone.Buffs;
+using Melia.Zone.Events;
 using Melia.Zone.Network.Helpers;
 using Melia.Zone.Skills;
 using Melia.Zone.Skills.Combat;
@@ -1244,7 +1245,7 @@ namespace Melia.Zone.Network
 		/// <param name="index">Index of the item in the inventory.</param>
 		/// <param name="amount">Amount to add.</param>
 		/// <param name="addType">The way the add is displayed?</param>
-		public static void ZC_ITEM_ADD(Character character, Item item, int index, int amount, InventoryAddType addType)
+		public static void ZC_ITEM_ADD(Character character, Item item, int index, int amount, InventoryAddType addType, InventoryType invType)
 		{
 			// For some reason this packet requires properties on the item,
 			// otherwise the client crashes. Let's catch this here for the
@@ -1266,7 +1267,7 @@ namespace Melia.Zone.Network
 			packet.PutShort(propertiesSize);
 			packet.PutByte((byte)addType);
 			packet.PutFloat(0f); // Notification delay
-			packet.PutByte(0); // InvType
+			packet.PutByte((byte)invType);
 			packet.PutByte(0);
 			packet.PutByte(0);
 			packet.AddProperties(propertyList);
@@ -1497,6 +1498,23 @@ namespace Melia.Zone.Network
 			packet.PutFloat(entity.Direction.Sin);
 
 			entity.Map.Broadcast(packet, entity);
+		}
+
+		/// <summary>
+		/// Sends a custom dialog message.
+		/// </summary>
+		/// <param name="character"></param>
+		/// <param name="close"></param>
+		/// <param name="msg"></param>
+		/// <param name="argNum"></param>
+		public static void ZC_CUSTOM_DIALOG(Character character, string close, string msg, int argNum = 0)
+		{
+			var packet = new Packet(Op.ZC_CUSTOM_DIALOG);
+			packet.PutString(close, 33);
+			packet.PutString(msg, 32);
+			packet.PutInt(argNum);
+
+			character.Connection.Send(packet);
 		}
 
 		/// <summary>
@@ -3521,7 +3539,8 @@ namespace Melia.Zone.Network
 		/// <param name="character"></param>
 		/// <param name="type"></param>
 		/// <param name="items"></param>
-		public static void ZC_SOLD_ITEM_DIVISION_LIST(Character character, byte type, List<Item> items)
+		/// <param name="itemsPositions"></param>
+		public static void ZC_SOLD_ITEM_DIVISION_LIST(Character character, byte type, List<Item> items, List<int> itemsPositions = null)
 		{
 			var packet = new Packet(Op.ZC_SOLD_ITEM_DIVISION_LIST);
 
@@ -3549,7 +3568,10 @@ namespace Melia.Zone.Network
 						zpacket.PutInt(items[i].Amount);
 						zpacket.PutInt(items[i].Price);
 						zpacket.PutInt(1);
-						zpacket.PutInt(items.Count - i - 1);
+						if (itemsPositions != null)
+							zpacket.PutInt(itemsPositions.ElementAt(i));
+						else
+							zpacket.PutInt(items.Count - i - 1);
 						zpacket.AddProperties(propertyList);
 						if (propertiesSize > 0)
 						{

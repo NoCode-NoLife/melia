@@ -113,6 +113,25 @@ namespace Melia.Zone.World.Items
 		}
 
 		/// <summary>
+		/// Copy constructor
+		/// </summary>
+		/// <param name="other"></param>
+		public Item (Item other)
+		{
+			this.Id = other.Id;
+			this.LoadData();
+			this.Price = other.Price;
+			this.IsLocked = other.IsLocked;
+			this.OriginalOwnerHandle = other.OriginalOwnerHandle;
+			this.RePickUpTime = other.RePickUpTime;
+			this.OwnerHandle = other.OwnerHandle;
+			this.LootProtectionEnd = other.LootProtectionEnd;
+			this.Properties = other.Properties;
+
+			this.Amount = other.Amount;
+		}
+
+		/// <summary>
 		/// Loads item data from data files.
 		/// </summary>
 		private void LoadData()

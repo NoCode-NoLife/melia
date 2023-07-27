@@ -862,6 +862,7 @@ namespace Melia.Zone.Network
 
 		/// <summary>
 		/// Sent to continue dialog?
+		/// Also sent when closing storage.
 		/// </summary>
 		/// <param name="conn"></param>
 		/// <param name="packet"></param>
@@ -869,6 +870,17 @@ namespace Melia.Zone.Network
 		public void CZ_DIALOG_ACK(IZoneConnection conn, Packet packet)
 		{
 			var type = packet.GetInt();
+
+			var character = conn.SelectedCharacter;
+			var storage = conn.SelectedCharacter.PersonalStorage;
+
+			// If storage was open, close it
+			if (storage.IsBrowsing && (type == 1))
+			{
+				storage.Close();
+				conn.CurrentDialog = null;
+				return;
+			}
 
 			// Check state
 			if (conn.CurrentDialog == null)
@@ -1375,6 +1387,136 @@ namespace Melia.Zone.Network
 			}
 
 			skill.Vars.Set("Melia.ToolGroundPos", pos);
+		}
+
+		/// <summary>
+		/// Sent when opening storage and requesting item list in the storage.
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_REQ_ITEM_LIST)]
+		public void CZ_REQ_ITEM_LIST(IZoneConnection conn, Packet packet)
+		{
+			var type = (StorageType)packet.GetByte();
+
+			var character = conn.SelectedCharacter;
+			var inventory = character.Inventory;
+			var storage = character.PersonalStorage;
+
+			if (type == StorageType.PersonalStorage)
+			{
+				// Server allowance check
+				if (storage.IsBrowsing)
+				{
+					var storageItems = storage.GetStorage();
+					var itemList = storageItems.Values.ToList();
+					var itemPositions = storageItems.Keys.ToList();
+
+					// If items in storage have no properties the client will crash.
+					// For that reason, we get all items that do not have 'CoolDown'
+					// property and set it to zero. We chose this property because it seems
+					// official behaviour always sends this property by default.
+					var noPropertyList = itemList.Where(item => item.Properties.Get("CoolDown") == null).ToList();
+					noPropertyList.ForEach(item => item.Properties.Modify("CoolDown", 0));
+
+					Send.ZC_SOLD_ITEM_DIVISION_LIST(character, (byte)type, itemList, itemPositions);
+				}
+			}
+			else if (type == StorageType.TeamStorage)
+			{
+				Log.Warning("CZ_REQ_ITEM_LIST: Team storage not yet implemented");
+				character.ServerMessage(Localization.Get("This action has not been implemented yet."));
+			}
+		}
+
+		/// <summary>
+		/// Sent when retrieving or storing items to storage.
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_WAREHOUSE_CMD)]
+		public void CZ_WAREHOUSE_CMD(IZoneConnection conn, Packet packet)
+		{
+			var type = (StorageType)packet.GetByte();
+			var worldId = packet.GetLong();
+			var i1 = packet.GetInt();
+			var amount = packet.GetInt();
+			var i2 = packet.GetInt();
+			var interaction = (StorageInteraction)packet.GetByte();
+
+			var character = conn.SelectedCharacter;
+			var inventory = character.Inventory;
+			var storage = character.PersonalStorage;
+
+			if ( (interaction != StorageInteraction.Store) && (interaction != StorageInteraction.Retrieve) )
+			{
+				Log.Warning("CZ_WAREHOUSE_CMD: No valid interaction type for value: '{0}'", interaction);
+				return;
+			}
+
+			if (type == StorageType.PersonalStorage)
+			{
+				if (!storage.IsBrowsing)
+				{
+					Log.Warning("CZ_WAREHOUSE_CMD: User '{0}' tried to manage their personal storage without it being open.", conn.Account.Name);
+					return;
+				}
+
+				if (inventory.CountItem(ItemId.Silver) < 20)
+				{
+					var interactionName = "operate";
+					if (interaction == StorageInteraction.Store)
+						interactionName = "store to";
+					else if (interaction == StorageInteraction.Retrieve)
+						interactionName = "retrieve from";
+
+					Log.Warning("CZ_WAREHOUSE_CMD: User '{0}' tried to {1} storage without silver", conn.Account.Name, interactionName);
+					return;
+				}
+
+				// Storing items
+				if (interaction == StorageInteraction.Store)
+				{
+					if (storage.StoreItem(worldId, amount) == StorageResult.Success)
+						inventory.Remove(ItemId.Silver, 20, InventoryItemRemoveMsg.Given);
+				}
+				// Retrieving items
+				else if (interaction == StorageInteraction.Retrieve)
+				{
+					if (storage.RetrieveItem(worldId, amount) == StorageResult.Success)
+						inventory.Remove(ItemId.Silver, 20, InventoryItemRemoveMsg.Given);
+				}
+			}
+			else if (type == StorageType.TeamStorage)
+			{
+				Log.Warning("CZ_WAREHOUSE_CMD: Team storage not yet implemented");
+				character.ServerMessage(Localization.Get("This action has not been implemented yet."));
+			}
+			else
+			{
+				Log.Warning("CZ_WAREHOUSE_CMD: No valid storage type for value: '{0}'", type);
+			}
+		}
+
+		/// <summary>
+		/// Swap items in storage
+		/// </summary>
+		/// <param name="conn"></param>
+		/// <param name="packet"></param>
+		[PacketHandler(Op.CZ_SWAP_ITEM_IN_WAREHOUSE)]
+		public void CZ_SWAP_ITEM_IN_WAREHOUSE(IZoneConnection conn, Packet packet)
+		{
+			var fromSlot = packet.GetInt();
+			var toSlot = packet.GetInt();
+			var item1ObjectId = packet.GetLong();
+			var item2ObjectId = packet.GetLong();
+
+			var character = conn.SelectedCharacter;
+
+			if (character.PersonalStorage.IsBrowsing)
+			{
+				character.PersonalStorage.Swap(fromSlot, toSlot);
+			}
 		}
 
 		/// <summary>
