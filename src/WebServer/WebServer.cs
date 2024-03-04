@@ -1,7 +1,9 @@
-﻿using System;
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Security.Cryptography;
 using System.Threading;
 using EmbedIO;
 using EmbedIO.Files;
@@ -9,13 +11,14 @@ using EmbedIO.Net;
 using EmbedIO.WebApi;
 using Melia.Shared;
 using Melia.Shared.Data.Database;
-using Melia.Shared.L10N;
 using Melia.Shared.Network.Inter.Messages;
 using Melia.Web.Controllers;
 using Melia.Web.Logging;
 using Melia.Web.Modules;
+using Melia.Web.Network;
 using Yggdrasil.Logging;
 using Yggdrasil.Network.Communication;
+using Yggdrasil.Network.TCP;
 using Yggdrasil.Util;
 using Yggdrasil.Util.Commands;
 
@@ -27,20 +30,26 @@ namespace Melia.Web
 
 		private EmbedIO.WebServer _server;
 
+		private TcpConnectionAcceptor<WebServerConnection> _acceptor;
+
 		/// <summary>
 		/// Returns the server's inter-server communicator.
 		/// </summary>
 		public Communicator Communicator { get; private set; }
 
 		/// <summary>
-		/// Runs the server.
+		/// <summary>
+		/// List containing Server Information Messages
+		/// </summary>
+		public Dictionary<int, ResServerInformationMessage> ServerInformationMessages { get; set; } = new Dictionary<int, ResServerInformationMessage>();
+		
+        /// Runs the server.
 		/// </summary>
 		/// <param name="args"></param>
 		public override void Run(string[] args)
 		{
 			this.GetServerId(args, out var groupId, out var serverId);
 			var title = string.Format("Web ({0}, {1})", groupId, serverId);
-
 			ConsoleUtil.WriteHeader(ConsoleHeader.ProjectName, title, ConsoleColor.DarkRed, ConsoleHeader.Logo, ConsoleHeader.Credits);
 			ConsoleUtil.LoadingTitle();
 
@@ -49,13 +58,35 @@ namespace Melia.Web
 			this.LoadData(ServerType.Web);
 			this.LoadServerList(this.Data.ServerDb, ServerType.Web, groupId, serverId);
 			this.CheckDependencies();
-
 			this.StartCommunicator();
 			this.StartWebServer();
+
+			this.StartAcceptor();
 
 			ConsoleUtil.RunningTitle();
 
 			new ConsoleCommands().Wait();
+		}
+
+		/// <summary>
+		/// Starts accepting connections.
+		/// </summary>
+		private void StartAcceptor()
+		{
+			_acceptor = new TcpConnectionAcceptor<WebServerConnection>(this.ServerInfo.InterPort);
+			_acceptor.ConnectionAccepted += this.OnConnectionAccepted;
+			_acceptor.Listen();
+
+			Log.Status("Server ready, listening on {0}.", _acceptor.Address);
+		}
+
+		/// <summary>
+		/// Called when a new connection is accepted.
+		/// </summary>
+		/// <param name="conn"></param>
+		private void OnConnectionAccepted(WebServerConnection conn)
+		{
+			Log.Info("New connection accepted from '{0}'.", conn.Address);
 		}
 
 		/// <summary>
@@ -119,6 +150,15 @@ namespace Melia.Web
 					File.Copy(productionIniFilePath, iniFilePath);
 
 					Log.Info("Successfully downloaded PHP to '{0}'.", phpFolderPath);
+
+					Log.Info("PHP extraction complete, enabling extensions...");
+
+					this.EnablPhpExtesion(iniFilePath, "extension=fileinfo");
+					this.EnablPhpExtesion(iniFilePath, "extension=zip");
+					this.EnablPhpExtesion(iniFilePath, "extension=mysqli");
+					this.EnablPhpExtesion(iniFilePath, "extension=pdo_mysql");
+
+					Log.Info("Successfully enabled PHP extensions.");
 				}
 				catch (Exception)
 				{
@@ -140,7 +180,7 @@ namespace Melia.Web
 		{
 			Log.Info("Attempting to connect to coordinator...");
 
-			var commName = ServerType.Barracks.ToString();
+			var commName = ServerType.Web.ToString();
 
 			this.Communicator = new Communicator(commName);
 			this.Communicator.Disconnected += this.Communicator_OnDisconnected;
@@ -193,15 +233,20 @@ namespace Melia.Web
 		/// <param name="message"></param>
 		private void Communicator_OnMessageReceived(string sender, ICommMessage message)
 		{
-			//Log.Debug("Message received from '{0}': {1}", sender, message);
-
 			switch (message)
 			{
 				case ServerUpdateMessage serverUpdateMessage:
-				{
 					this.ServerList.Update(serverUpdateMessage);
 					break;
-				}
+				case ResServerInformationMessage serverInformationMessage:
+					if (this.ServerInformationMessages.ContainsKey(serverInformationMessage.ProcessId))
+					{
+						this.ServerInformationMessages.Remove(serverInformationMessage.ProcessId);
+					}
+					this.ServerInformationMessages.Add(serverInformationMessage.ProcessId, serverInformationMessage);
+					break;
+				default:
+					break;
 			}
 		}
 
@@ -230,9 +275,10 @@ namespace Melia.Web
 				//   adding a pre-processor.
 
 				_server.WithWebApi("/toslive/patch/", m => m.WithController<TosPatchController>());
-				_server.WithWebApi("/api/", m => m.WithController<ApiController>());
+				_server.WithWebApi("/api/", m => m.WithController<ApiController>()));
 
 				_server.WithModule(new PhpModule("/"));
+				_server.WithModule(new AuthenticationModule("/api/"));
 
 				if (Directory.Exists("user/web/"))
 				{
@@ -273,6 +319,18 @@ namespace Melia.Web
 			{
 				Log.Error("Failed to start web server: {0}", ex);
 				ConsoleUtil.Exit(1);
+			}
+		}
+
+		private void EnablPhpExtesion(string iniFilePath, string extensionToEnable)
+		{
+			var phpConfigContent = File.ReadAllText(iniFilePath);
+			var extensionIndex = phpConfigContent.IndexOf(extensionToEnable);
+
+			if (extensionIndex != -1)
+			{
+				phpConfigContent = phpConfigContent.Remove(extensionIndex, extensionToEnable.Length);
+				File.WriteAllText(iniFilePath, phpConfigContent);
 			}
 		}
 	}

@@ -103,7 +103,7 @@ namespace Melia.Shared.Network
 				return;
 
 			serverInfo.CurrentPlayers = serverUpdateMessage.PlayerCount;
-			serverInfo.Status = serverUpdateMessage.Status;
+			serverInfo.Status = serverUpdateMessage.ServerStatus;
 		}
 	}
 

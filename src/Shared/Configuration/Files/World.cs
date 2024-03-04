@@ -1,4 +1,5 @@
-﻿using Yggdrasil.Configuration;
+﻿using System.Collections.Generic;
+using Yggdrasil.Configuration;
 
 namespace Melia.Shared.Configuration.Files
 {
@@ -112,6 +113,11 @@ namespace Melia.Shared.Configuration.Files
 			this.EliteAlwaysAggressive = this.GetBool("elite_always_aggressive", true);
 			this.RedOrbJackpotRate = this.GetFloat("red_orb_jackpot_rate", 10000);
 			this.RedOrbEliteRate = this.GetFloat("red_orb_elite_rate", 1000);
+		}
+
+		public Dictionary<string, string> GetOptions()
+		{
+			return _options;
 		}
 	}
 }

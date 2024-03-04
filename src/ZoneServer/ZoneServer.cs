@@ -1,8 +1,9 @@
-﻿using System;
-using System.Collections;
+using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Melia.Shared;
 using Melia.Shared.Data.Database;
 using Melia.Shared.IES;
@@ -16,6 +17,7 @@ using Melia.Zone.Events;
 using Melia.Zone.Network;
 using Melia.Zone.Skills.Handlers;
 using Melia.Zone.World;
+using Microsoft.VisualBasic.Devices;
 using Melia.Zone.World.Actors.Characters;
 using Yggdrasil.Logging;
 using Yggdrasil.Network.Communication;
@@ -111,6 +113,7 @@ namespace Melia.Zone
 
 			this.StartCommunicator();
 			this.StartAcceptor();
+			this.SendProcessInformation();
 
 			ConsoleUtil.RunningTitle();
 			new ConsoleCommands().Wait();
@@ -239,6 +242,21 @@ namespace Melia.Zone
 					}
 					break;
 				}
+				case ReqKickAllMessage reqKickAllMessage:
+				{
+					var characters = this.World.GetCharacters();
+					foreach (var character in characters) {
+						character.MsgBox(Localization.Get("You were kicked."));
+						character.Connection.Close(100);
+					}
+					break;
+				}
+				case ReqReloadConfigsMessage reqReloadConfigsMessage:
+				{					
+					Log.Info("Reloading configuration...");
+					this.Conf.Load();
+					break;
+				}
 			}
 		}
 
@@ -318,6 +336,38 @@ namespace Melia.Zone
 		private void OnConnectionAccepted(ZoneConnection conn)
 		{
 			Log.Info("New connection accepted from '{0}'.", conn.Address);
+		}
+
+		/// <summary>
+		/// Send the information about the process to the coordinator.
+		/// </summary>
+		private async void SendProcessInformation()
+		{
+			var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+			cpuCounter.NextValue();
+			Thread.Sleep(1000);
+			var cpuUsage = cpuCounter.NextValue();
+
+			var processRamCounter = new PerformanceCounter("Process", "Working Set", Process.GetCurrentProcess().ProcessName);
+
+			var totalRam = new ComputerInfo().TotalPhysicalMemory;
+			var processRamUsage = processRamCounter.NextValue();
+
+			var serverInformationMessage = new ResServerInformationMessage(
+				this.ServerInfo.Type, Process.GetCurrentProcess().Id, this.ServerInfo.Id,
+				Process.GetCurrentProcess().ProcessName, this.ServerInfo.Status,
+				cpuUsage, processRamUsage, totalRam, this.ServerInfo.Ip
+			);
+
+			try
+			{
+				this.Communicator.Send("Coordinator", serverInformationMessage);
+			}
+			catch (Exception)
+			{
+			}
+
+			await Task.Delay(TimeSpan.FromMinutes(5));
 		}
 	}
 }

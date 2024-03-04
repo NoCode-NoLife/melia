@@ -1,7 +1,10 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using System.Threading;
 using Melia.Barracks.Database;
 using Melia.Barracks.Events;
 using Melia.Barracks.Network;
@@ -11,6 +14,7 @@ using Melia.Shared.Data.Database;
 using Melia.Shared.IES;
 using Melia.Shared.Network;
 using Melia.Shared.Network.Inter.Messages;
+using Microsoft.VisualBasic.Devices;
 using Yggdrasil.Logging;
 using Yggdrasil.Network.Communication;
 using Yggdrasil.Network.Communication.Messages;
@@ -84,6 +88,7 @@ namespace Melia.Barracks
 
 			this.StartCommunicator();
 			this.StartAcceptor();
+			this.SendProcessInformation();
 
 			ConsoleUtil.RunningTitle();
 			new BarracksConsoleCommands().Wait();
@@ -151,7 +156,7 @@ namespace Melia.Barracks
 		private void Communicator_OnMessageReceived(string sender, ICommMessage message)
 		{
 			//Log.Debug("Message received from '{0}': {1}", sender, message);
-
+                    
 			switch (message)
 			{
 				case ServerUpdateMessage serverUpdateMessage:
@@ -190,6 +195,11 @@ namespace Melia.Barracks
 					var responseMessage = new ResponseMessage(requestMessage.Id, message);
 
 					this.Communicator.Send(sender, responseMessage);
+					break;
+				}
+				case ResServerInformationMessage resServerInformationMessage:
+				{
+					this.Communicator.Send("Web", resServerInformationMessage);
 					break;
 				}
 			}
@@ -265,6 +275,36 @@ namespace Melia.Barracks
 				if (conn.LoggedIn)
 					conn.Send(packet);
 			}
+		}
+
+		/// <summary>
+		/// Send the information about the process to the coordinator.
+		/// </summary>
+		private async void SendProcessInformation()
+		{
+			var cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+			cpuCounter.NextValue();
+			Thread.Sleep(1000);
+			var cpuUsage = cpuCounter.NextValue();
+
+			var processRamCounter = new PerformanceCounter("Process", "Working Set", Process.GetCurrentProcess().ProcessName);
+
+			var totalRam = new ComputerInfo().TotalPhysicalMemory;
+			var processRamUsage = processRamCounter.NextValue();
+
+			var serverInformationMessage = new ResServerInformationMessage(
+				this.ServerInfo.Type, Process.GetCurrentProcess().Id, this.ServerInfo.Id,
+				Process.GetCurrentProcess().ProcessName, this.ServerInfo.Status,
+				cpuUsage, processRamUsage, totalRam, this.ServerInfo.Ip
+			);
+
+			try {
+				this.Communicator.Send("Web", serverInformationMessage);
+			} catch (Exception)
+			{
+			}
+			
+			await Task.Delay(TimeSpan.FromMinutes(5));
 		}
 	}
 }
