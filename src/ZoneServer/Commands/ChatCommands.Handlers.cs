@@ -81,6 +81,7 @@ namespace Melia.Zone.Commands
 			this.Add("kick", "<team name>", "Kicks the player with the given team name if they're online.", this.HandleKick);
 			this.Add("fixcam", "", "Fixes the character's camera in place.", this.HandleFixCamera);
 			this.Add("daytime", "[timeOfDay=day|night|dawn|dusk]", "Sets the current day time.", this.HandleDayTime);
+			this.Add("storage", "", "Opens personal storage.", this.HandlePersonalStorage);
 
 			// Dev
 			this.Add("test", "", "", this.HandleTest);
@@ -1493,16 +1494,41 @@ namespace Melia.Zone.Commands
 			return CommandResult.Okay;
 		}
 
-		/// <summary>
-		/// Toggles autoloot.
-		/// </summary>
-		/// <param name="sender"></param>
-		/// <param name="target"></param>
-		/// <param name="message"></param>
-		/// <param name="command"></param>
-		/// <param name="args"></param>
-		/// <returns></returns>
-		private CommandResult HandleAutoloot(Character sender, Character target, string message, string command, Arguments args)
+        /// <summary>
+        /// Opens personal storage of target character
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="target"></param>
+        /// <param name="message"></param>
+        /// <param name="command"></param>
+        /// <param name="args"></param>
+        /// <returns></returns>
+        private CommandResult HandlePersonalStorage(Character sender, Character target, string message, string command, Arguments args)
+        {
+            if (!target.PersonalStorage.IsBrowsing)
+            {
+                target.PersonalStorage.Open();
+                sender.ServerMessage("Opened personal storage.");
+                if (sender != target)
+                    target.ServerMessage("Your personal storage was opened by {0}", sender.TeamName);
+            }
+            else
+            {
+                sender.ServerMessage("Already browsing personal storage.");
+            }
+            return CommandResult.Okay;
+        }
+
+        /// <summary>
+        /// Toggles autoloot.
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="target"></param>
+        /// <param name="message"></param>
+        /// <param name="command"></param>
+        /// <param name="args"></param>
+        /// <returns></returns>
+        private CommandResult HandleAutoloot(Character sender, Character target, string message, string command, Arguments args)
 		{
 			var autoloot = sender.Variables.Temp.Get("Autoloot", 0);
 

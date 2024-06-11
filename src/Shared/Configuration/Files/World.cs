@@ -21,13 +21,14 @@ namespace Melia.Shared.Configuration.Files
 		public int DropDisappearSeconds { get; protected set; }
 		public bool Littering { get; protected set; }
 		public bool TargetedLittering { get; protected set; }
+        public bool StorageMultiStack { get; protected set; }
 
-		// exp.conf
-		public float ExpRate { get; protected set; }
+        // exp.conf
+        public float ExpRate { get; protected set; }
 		public float ClassExpRate { get; protected set; }
 
 		// game_time.conf
-		public int TicksPerMinute { get; protected set; }
+        public int TicksPerMinute { get; protected set; }
 		public int MinutesPerHour { get; protected set; }
 		public int HoursPerDay { get; protected set; }
 		public int DaysPerMonth { get; protected set; }
@@ -80,12 +81,15 @@ namespace Melia.Shared.Configuration.Files
 			this.DropDisappearSeconds = this.GetInt("drop_disappear_time", 100);
 			this.Littering = this.GetBool("littering", false);
 			this.TargetedLittering = this.GetBool("targeted_littering", false);
+			this.StorageMultiStack = this.GetBool("storage_multi_stack", true);
 
 			this.ExpRate = this.GetFloat("exp_rate", 100);
 			this.ClassExpRate = this.GetFloat("class_exp_rate", 100);
 
 			this.TicksPerMinute = this.GetInt("rt2gt_ms_per_minute", 1500) * 10000;
 			this.MinutesPerHour = this.GetInt("gt_minutes_per_hour", 60);
+			this.DisableSDR = this.GetBool("disable_sdr", false);
+			this.AbilityPointCost = this.GetInt("ability_point_cost", 1000);
 			this.HoursPerDay = this.GetInt("gt_hours_per_day", 24);
 			this.DaysPerMonth = this.GetInt("gt_days_per_month", 40);
 			this.MonthsPerYear = this.GetInt("gt_months_per_year", 7);
