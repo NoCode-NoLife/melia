@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Melia.Shared.Database;
 using Melia.Shared.L10N;
@@ -8,7 +9,10 @@ using Melia.Shared.Scripting;
 using Melia.Shared.Game.Const;
 using Melia.Shared.World;
 using Melia.Zone.Network;
+using Melia.Zone.Scripting.Dialogues;
 using Melia.Zone.Scripting.AI;
+using Melia.Zone.Skills;
+using Melia.Zone.Skills;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using Melia.Zone.World.Actors.Monsters;
@@ -335,6 +339,12 @@ namespace Melia.Zone.World.Actors.Characters
 			get => _localizer ?? ZoneServer.Instance.MultiLocalization.GetDefault();
 			private set => _localizer = value;
 		}
+
+		/// <summary>
+		/// Returns the character's list of placed traps
+		/// </summary>
+		public List<Mob> PlacedTraps { get; set; } = new List<Mob>();
+
 		private Localizer _localizer;
 
 		/// <summary>
@@ -562,6 +572,7 @@ namespace Melia.Zone.World.Actors.Characters
 				this.MapId = mapId;
 				_warping = true;
 
+				this.CleanPlacedTraps();
 				Send.ZC_MOVE_ZONE(this.Connection);
 			}
 		}
@@ -597,7 +608,6 @@ namespace Melia.Zone.World.Actors.Characters
 				throw new Exception($"No suitable zone server found for map '{this.MapId}'");
 
 			var channelId = Math2.Clamp(0, availableZones.Length, _destinationChannelId);
-			var serverInfo = availableZones[channelId];
 
 			// Save everything before leaving the server
 			ZoneServer.Instance.Database.SaveCharacter(this);
@@ -605,7 +615,11 @@ namespace Melia.Zone.World.Actors.Characters
 			ZoneServer.Instance.Database.UpdateLoginState(this.Connection.Account.Id, 0, LoginState.LoggedOut);
 			this.SavedForWarp = true;
 
-			// Instruct client to initiate warp
+            this.CleanPlacedTraps();
+
+            // Instruct client to initiate warp
+            var serverInfo = availableZones[channelId];
+
 			Send.ZC_MOVE_ZONE_OK(this, channelId, serverInfo.Ip, serverInfo.Port, this.MapId);
 
 			_warping = false;
@@ -672,6 +686,12 @@ namespace Melia.Zone.World.Actors.Characters
 		{
 			if (hpAmount == 0 && spAmount == 0)
 				return;
+
+			// 30% of healing reduced
+			if (Buffs.Has(BuffId.DecreaseHeal_Debuff))
+			{
+				hpAmount *= 0.7f;
+			}
 
 			this.ModifyHpSafe(hpAmount, out var hp, out var priority);
 			this.Properties.Modify(PropertyName.SP, spAmount);
@@ -854,7 +874,7 @@ namespace Melia.Zone.World.Actors.Characters
 
 					if (monster is ICombatEntity entity)
 					{
-						Send.ZC_FACTION(this.Connection, monster, entity.Faction);
+						Send.ZC_FACTION(this, monster, entity.Faction);
 
 						if (entity.Components.Get<BuffComponent>()?.Count != 0)
 							Send.ZC_BUFF_LIST(this.Connection, entity);
@@ -1179,6 +1199,7 @@ namespace Melia.Zone.World.Actors.Characters
 		public void Kill(ICombatEntity killer)
 		{
 			this.Properties.SetFloat(PropertyName.HP, 0);
+			this.CleanPlacedTraps();
 
 			//this.Died?.Invoke(this, killer);
 			ZoneServer.Instance.ServerEvents.OnEntityKilled(this, killer);
@@ -1296,6 +1317,16 @@ namespace Melia.Zone.World.Actors.Characters
 		{
 			this.Hair = hairTypeIndex;
 			Send.ZC_UPDATED_PCAPPEARANCE(this);
+		}
+
+		private void CleanPlacedTraps()
+		{
+			foreach(var trap in this.PlacedTraps)
+			{
+				this.Map.RemoveMonster(trap);
+			}
+
+			this.PlacedTraps.Clear();
 		}
 	}
 }

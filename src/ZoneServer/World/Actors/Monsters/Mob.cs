@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Melia.Shared.Configuration.Files;
+using System.Threading;
 using Melia.Shared.Data.Database;
 using Melia.Shared.ObjectProperties;
 using Melia.Shared.Game.Const;
@@ -217,6 +218,16 @@ namespace Melia.Zone.World.Actors.Monsters
 		public Variables Vars { get; } = new Variables();
 
 		/// <summary>
+		/// Returns the mob's list of placed traps
+		/// </summary>
+		public List<Mob> PlacedTraps { get; set; } = new List<Mob>();
+
+		/// <summary>
+		/// Returns the monster's owner/summoner.
+		/// </summary>
+		public ICombatEntity Owner { get; set; }
+
+		/// <summary>
 		/// Creates new NPC.
 		/// </summary>
 		public Mob(int id, MonsterType type) : base()
@@ -300,6 +311,7 @@ namespace Melia.Zone.World.Actors.Monsters
 			this.Properties.SetFloat(PropertyName.HP, 0);
 			this.Components.Get<MovementComponent>()?.Stop();
 			this.DisappearTime = DateTime.Now.AddSeconds(2);
+			this.CleanPlacedTraps();
 
 			var beneficiary = this.GetKillBeneficiary(killer);
 
@@ -713,6 +725,12 @@ namespace Melia.Zone.World.Actors.Monsters
 		/// <param name="spAmount"></param>
 		public void Heal(float hpAmount, float spAmount)
 		{
+			// 30% of healing reduced
+			if (Buffs.Has(BuffId.DecreaseHeal_Debuff))
+			{
+				hpAmount *= 0.7f;
+			}
+
 			this.Properties.Modify(PropertyName.HP, hpAmount);
 			this.Properties.Modify(PropertyName.SP, spAmount);
 
@@ -758,6 +776,16 @@ namespace Melia.Zone.World.Actors.Monsters
 
 			this.Properties.SetFloat(PropertyName.HP, this.Properties.GetFloat(PropertyName.MHP));
 			this.Properties.SetFloat(PropertyName.SP, this.Properties.GetFloat(PropertyName.MSP));
+		}
+
+		private void CleanPlacedTraps()
+		{
+			foreach (var trap in this.PlacedTraps)
+			{
+				this.Map.RemoveMonster(trap);
+			}
+
+			this.PlacedTraps.Clear();
 		}
 	}
 }

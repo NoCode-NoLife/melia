@@ -1,9 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
 using Melia.Shared.L10N;
 using Melia.Shared.Game.Const;
 using Melia.Zone.Network;
 using Melia.Zone.Skills.Combat;
 using Melia.Zone.Skills.Handlers.Base;
+using Melia.Zone.Skills.SplashAreas;
 using Melia.Zone.World.Actors;
 using Melia.Zone.World.Actors.CombatEntities.Components;
 using static Melia.Zone.Skills.SkillUseFunctions;
@@ -53,6 +55,54 @@ namespace Melia.Zone.Skills.Handlers.Common
 			skillHit.ForceId = ForceId.GetNew();
 
 			Send.ZC_SKILL_FORCE_TARGET(caster, target, skill, skillHit);
+
+			if (target.Components.Get<BuffComponent>().TryGet(BuffId.Virus_Debuff, out var virusDebuff))
+			{
+				if (virusDebuff.Vars.TryGetInt("Melia.SpreadTargets", out var spreadTargetsCount))
+				{
+					if (spreadTargetsCount < 5)
+					{
+						SpreadVirusDebuff(skill, caster, target);
+					}					
+				}				
+			}
+		}
+
+		/// <summary>
+		/// Executes the actual attack after a potential delay.
+		/// </summary>
+		/// <param name="skill"></param>
+		/// <param name="caster"></param>
+		/// <param name="castPosition"></param>
+		/// <param name="targetPosition"></param>
+		private void SpreadVirusDebuff(Skill skill, ICombatEntity caster, ICombatEntity initialTarget)
+		{
+			var splashArea = new Circle(initialTarget.Position, 50);
+			var targets = caster.Map.GetAttackableEntitiesIn(caster, splashArea);
+
+			var skillHits = new List<SkillHitInfo>();
+
+			foreach (var target in targets)
+			{
+				var buffComponent = target.Components.Get<BuffComponent>();
+
+				if (!buffComponent.Has(BuffId.Virus_Debuff))
+				{
+					var skillHitResult = SCR_SkillHit(caster, target, skill);
+					target.Components.Get<BuffComponent>().Start(BuffId.Virus_Debuff, skill.Level, skillHitResult.Damage, TimeSpan.FromSeconds(10), caster);
+
+					var VirusDebuff = buffComponent.Get(BuffId.Virus_Debuff);
+					if (VirusDebuff.Vars.TryGetInt("Melia.SpreadTargets", out var spreadTargetsCount))
+					{
+						VirusDebuff.Vars.SetInt("Melia.SpreadTargets", spreadTargetsCount + 1);
+
+						if ((spreadTargetsCount + 1) >= 5)
+						{
+							break;
+						}
+					}
+				}
+			}
 		}
 	}
 }

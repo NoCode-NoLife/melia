@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Melia.Shared.Data.Database;
 using Melia.Shared.L10N;
 using Melia.Shared.Game.Const;
 using Melia.Shared.World;

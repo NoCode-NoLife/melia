@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Melia.Shared.Network;
 using Melia.Shared.Network.Helpers;
 using Melia.Shared.Game.Const;
@@ -7,6 +7,7 @@ using Melia.Zone.World.Actors;
 using Melia.Zone.World.Actors.Characters;
 using Melia.Zone.World.Actors.Characters.Components;
 using Melia.Zone.World.Actors.Monsters;
+using Melia.Zone.Skills;
 
 namespace Melia.Zone.Network
 {
@@ -134,7 +135,7 @@ namespace Melia.Zone.Network
 				packet.PutInt(NormalOp.Zone.PlayTextEffect);
 
 				packet.PutInt(actor.Handle);
-				packet.PutInt(caster.Handle);
+				packet.PutInt(caster != null ? caster.Handle : 0);
 				packet.PutInt(packetStringData.Id);
 				packet.PutFloat(argNum);
 
@@ -206,7 +207,7 @@ namespace Melia.Zone.Network
 			/// <exception cref="ArgumentException">
 			/// Thrown if any of the packet strings are not found.
 			/// </exception>
-			public static void PlayForceEffect(int forceId, IActor caster, IActor source, IActor target, string effect1PacketString, float effect1Scale, string effect2PacketString, string effect3PacketString, float effect3Scale, string effect4PacketString, string effect5PacketString, float speed)
+			public static void PlayForceEffect(IActor caster, IActor source, IActor target, int forceId, string effect1PacketString, float effect1Scale, string effect2PacketString, string effect3PacketString, float effect3Scale, string effect4PacketString, string effect5PacketString, float speed)
 			{
 				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(effect1PacketString, out var packetStringData1))
 					throw new ArgumentException($"Packet string '{effect1PacketString}' not found.");
@@ -226,8 +227,7 @@ namespace Melia.Zone.Network
 				var packet = new Packet(Op.ZC_NORMAL);
 				packet.PutInt(NormalOp.Zone.PlayForceEffect);
 
-				packet.PutInt(forceId);
-
+				packet.PutInt(forceId);        
 				packet.PutInt(caster.Handle);
 				packet.PutInt(source.Handle);
 				packet.PutInt(target.Handle);
@@ -285,22 +285,21 @@ namespace Melia.Zone.Network
 
 			/// <summary>
 			/// Packet with unknown purpose that's sent during dynamic
-			/// casting.
 			/// </summary>
-			/// <param name="character"></param>
+			/// <param name="actor"></param>
 			/// <param name="skillId"></param>
-			/// <param name="value"></param>
-			public static void UnkDynamicCastEnd(Character character, SkillId skillId, float value)
+			/// <param name="duration"></param>
+			public static void UnkDynamicCastEnd(IActor actor, SkillId skillId, float duration)
 			{
 				var packet = new Packet(Op.ZC_NORMAL);
 				packet.PutInt(NormalOp.Zone.UnkDynamicCastEnd);
 
-				packet.PutInt(character.Handle);
+				packet.PutInt(actor.Handle);
 				packet.PutInt((int)skillId);
-				packet.PutFloat(value);
+				packet.PutFloat(duration);
 				packet.PutByte(0);
 
-				character.Connection.Send(packet);
+				actor.Map.Broadcast(packet, actor);
 			}
 
 			/// <summary>
@@ -478,13 +477,13 @@ namespace Melia.Zone.Network
 			/// <param name="originPos"></param>
 			/// <param name="direction"></param>
 			/// <param name="farPos"></param>
-			public static void UpdateSkillEffect(ICombatEntity entity, int targetHandle, Position originPos, Direction direction, Position farPos)
+			public static void UpdateSkillEffect(ICombatEntity entity, int targetHandle, Position originPos, Direction direction, Position farPos, int secondaryAnimation = 0)
 			{
 				var packet = new Packet(Op.ZC_NORMAL);
-				packet.PutInt(NormalOp.Zone.UpdateSkillEffect);
 
+				packet.PutInt(NormalOp.Zone.UpdateSkillEffect);
 				packet.PutInt(entity.Handle);
-				packet.PutInt(0);
+				packet.PutInt(secondaryAnimation);
 				packet.PutInt(0);
 				packet.PutInt(targetHandle);
 				packet.PutPosition(originPos);
@@ -962,38 +961,206 @@ namespace Melia.Zone.Network
 			}
 
 			/// <summary>
-			/// Purpose unknown, related to skills.
+			/// Show/Hide ground skill effects.
 			/// </summary>
-			/// <param name="character"></param>
-			/// <param name="casterHandle"></param>
+			/// <param name="actor"></param>
 			/// <param name="packetString"></param>
 			/// <param name="skillId"></param>
 			/// <param name="targetPos"></param>
-			/// <param name="targetDir"></param>
+			/// <param name="identifier"></param>
+			/// <param name="startEffect"></param>
 			/// <exception cref="ArgumentException"></exception>
-			public static void Skill_59(Character character, int casterHandle, string packetString, SkillId skillId, Position targetPos, Direction targetDir)
+			public static void GroundEffect_59(IActor actor, Direction direction, string packetString, SkillId skillId, Position targetPos, int identifier, bool startEffect)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+					throw new ArgumentException($"Unknown packet string '{packetString}'.");
+
+				var startOrEndEffect = startEffect ? 1 : 0;
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.GroundEffect);
+
+				packet.PutInt(actor.Handle);
+				packet.PutInt(packetStringData.Id);
+				packet.PutInt((int)skillId);
+				packet.PutInt(1);
+				packet.PutPosition(targetPos);
+				packet.PutDirection(direction);
+				packet.PutFloat(0);
+				packet.PutFloat(0);
+				packet.PutInt(identifier);
+				packet.PutInt(startOrEndEffect);
+				packet.PutEmptyBin(13);
+				packet.PutFloat(150);
+				packet.PutEmptyBin(16);
+
+				actor.Map.Broadcast(packet);
+			}
+
+			/// <summary>
+			/// Unknow purposes, related to skills.
+			/// </summary>
+			/// <param name="combatEntity"></param>
+			/// <param name="target"></param>
+			/// <param name="skill"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_88(ICombatEntity combatEntity, ICombatEntity target, Skill skill)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_88);
+
+				packet.PutInt(target.Handle);
+				packet.PutInt((int)(skill?.Id ?? 0));
+
+				combatEntity.Map.Broadcast(packet, combatEntity);
+			}
+
+			/// <summary>
+			/// Something related to skill efffect?
+			/// </summary>
+			/// <param name="combatEntity"></param>
+			/// <param name="packetString"></param>
+			/// <param name="monster"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_122(ICombatEntity combatEntity, string packetString)
 			{
 				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
 					throw new ArgumentException($"Unknown packet string '{packetString}'.");
 
 				var packet = new Packet(Op.ZC_NORMAL);
-				packet.PutInt(NormalOp.Zone.Skill_59);
+				packet.PutInt(NormalOp.Zone.Skill_122);
 
-				packet.PutInt(casterHandle);
 				packet.PutInt(packetStringData.Id);
-				packet.PutInt((int)skillId);
-				packet.PutInt(1);
-				packet.PutPosition(targetPos);
-				packet.PutDirection(targetDir);
-				packet.PutFloat(-0.78f);
-				packet.PutFloat(0);
 				packet.PutInt(0);
-				packet.PutInt(1);
-				packet.PutEmptyBin(13);
-				packet.PutFloat(150);
-				packet.PutEmptyBin(16);
 
-				character.Connection.Send(packet);
+				combatEntity.Map.Broadcast(packet, combatEntity);
+			}
+
+			/// <summary>
+			/// Unknow purposes, related to skills effects
+			/// </summary>
+			/// <param name="character"></param>
+			/// <param name="packetString"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_5C(ICombatEntity entity, ICombatEntity target, SkillId skillId, int skillEffectId)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_5C);
+
+				packet.PutInt(skillEffectId);
+				packet.PutInt(target.Handle);
+				packet.PutInt(0);
+				packet.PutByte(1);
+
+				entity.Map.Broadcast(packet, entity);
+			}
+
+			/// <summary>
+			/// It seems to start an animation for a given effectId.
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="effectId"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void PlayAnimationOnEffect_6D(IActor actor, int effectId)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_6D);
+
+				packet.PutInt(effectId);
+				packet.PutByte(1);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// It seems to start an animation for a given skill.
+			/// </summary>
+			/// <param name="character"></param>
+			/// <param name="packetString"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void PlayAnimationOnEffect_7D(IActor actor, SkillId skillId)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_7D);
+
+				packet.PutInt(actor.Handle);
+				packet.PutInt((int)skillId);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Unknow purposes, related to skills
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="packetString"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_90(IActor actor, string packetString)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+					throw new ArgumentException($"Unknown packet string '{packetString}'.");
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_90);
+
+				packet.PutInt(actor.Handle);
+				packet.PutInt(packetStringData.Id);
+				packet.PutInt(1);
+				packet.PutByte(0);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Related to skills that spawn objects/monsters
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="monster"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_99(IActor actor, IMonster monster)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_99);
+
+				packet.PutInt(monster.Handle);
+				packet.PutInt(0);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Related to skills that spawn objects/monsters
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="skill"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_C8(IActor actor, IMonster monster) 
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_C8);
+
+				packet.PutInt(monster.Handle);
+				packet.PutByte(1);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Something related to skill efffect?
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="skill"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void Skill_40(IActor actor, SkillId skillId, string skillString)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_40);
+
+				packet.PutInt(actor.Handle);
+				packet.PutInt((int)skillId);
+				packet.PutLpString(skillString);
+
+				actor.Map.Broadcast(packet, actor);
 			}
 
 			/// <summary>
@@ -1019,6 +1186,182 @@ namespace Melia.Zone.Network
 				entity.Map.Broadcast(packet, entity);
 			}
 
+			/// <summary>
+			/// Makes the entity jump to the target position.
+			/// </summary>
+			/// <param name="entity"></param>
+			/// <param name="targetPos"></param>
+			/// <param name="jumpHeight"></param>
+			public static void LeapJump(ICombatEntity entity, Position targetPos, float f1, float f2, float f3, float f4, float f5, float jumpHeight = 30)
+			{
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.LeapJump);
+
+				packet.PutInt(entity.Handle);
+				packet.PutPosition(targetPos);
+				packet.PutFloat(jumpHeight);
+				packet.PutFloat(f1);
+				packet.PutFloat(f2);
+				packet.PutFloat(f3);
+				packet.PutFloat(f4);
+				packet.PutFloat(f5);
+
+				entity.Map.Broadcast(packet, entity);
+			}
+
+			/// <summary>
+			/// Show Ground Effects
+			/// on clients in range.
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="packetString"></param>
+			/// <param name="duration"></param>
+			/// <param name="packetString2"></param>
+			/// <param name="duration2"></param>
+			/// <param name="position"></param>
+			public static void ExecuteAnimation(IActor actor, string packetString, float duration, string packetString2, float duration2, Position position)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+				{
+					throw new ArgumentException($"Unknown packet string '{packetString}'.");
+				}
+
+				ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString2, out var packetStringData2);
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.SkillProjectile);
+
+				packet.PutInt(actor.Handle);
+				packet.PutInt(packetStringData.Id);
+				packet.PutFloat(duration);
+				packet.PutInt(packetStringData2?.Id ?? 0);
+				packet.PutFloat(duration2);
+				packet.PutPosition(position);
+				packet.PutFloat(10);
+				packet.PutFloat(0.6f);
+				packet.PutFloat(0f);
+				packet.PutFloat(600);
+				packet.PutFloat(1);
+				packet.PutLong(0);
+				packet.PutShort(0);
+				packet.PutString("None");
+				packet.PutByte(0);
+
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Controls a skill's visual effects.
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="packetString"></param>
+			/// <param name="identifier"></param>
+			/// <param name="packetString5"></param>
+			/// <param name="speed"></param>
+			/// <param name="fromPos"></param>
+			/// <param name="ToPos"></param>
+			/// <param name="scale"></param>
+			/// <exception cref="ArgumentException">
+			/// Thrown if any of the packet strings are not found.
+			/// </exception>
+			public static void PlayForceEffect(IActor actor, string packetString, int identifier, string packetString5, float speed, Position fromPos, Position ToPos, float scale = 1)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+					throw new ArgumentException($"Packet string '{packetString}' not found.");
+
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString5, out var packetStringData5))
+					throw new ArgumentException($"Packet string '{packetString5}' not found.");
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.PlayForceEffect);
+
+				packet.PutInt(identifier);
+				packet.PutInt(actor.Handle);
+				packet.PutInt(actor.Handle);
+				packet.PutInt(0); //Handle 3?
+				packet.PutInt(packetStringData.Id);
+				packet.PutFloat(scale);
+				packet.PutInt(0);
+				packet.PutInt(0);
+				packet.PutFloat(0);
+				packet.PutInt(0);
+				packet.PutInt(packetStringData5.Id);
+				packet.PutFloat(speed);
+				packet.PutFloat(1);
+				packet.PutFloat(0);
+				packet.PutFloat(0);
+				packet.PutInt(0);
+				packet.PutFloat(20);
+				packet.PutFloat(5);
+				packet.PutFloat(0);
+				packet.PutInt(1);
+				packet.PutPosition(fromPos);
+				packet.PutPosition(ToPos);
+								
+				actor.Map.Broadcast(packet, actor);
+			}
+
+			/// <summary>
+			/// Show/Hide ground skill effects.
+			/// </summary>
+			/// <param name="actor"></param>
+			/// <param name="packetString"></param>
+			/// <param name="targetPos"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void GroundEffect_123(IActor actor, string packetString, Position targetPos)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+					throw new ArgumentException($"Unknown packet string '{packetString}'.");
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.Skill_123);
+
+				packet.PutInt(832667);
+				packet.PutInt(actor.Handle);
+				packet.PutInt(0);
+				packet.PutInt(packetStringData.Id);
+				packet.PutFloat(1f);
+				packet.PutPosition(targetPos);
+				packet.PutFloat(80f);
+				packet.PutFloat(0);
+				packet.PutInt(3);
+				packet.PutFloat(1f);
+				packet.PutFloat(5f);
+				packet.PutFloat(-2.356195f);
+				packet.PutFloat(3f);
+				packet.PutFloat(10f);
+
+				actor.Map.Broadcast(packet);
+			}
+
+			/// <summary>
+			/// Do something with a given effectId
+			/// </summary>
+			/// <param name="entity"></param>
+			/// <param name="packetString"></param>
+			/// <param name="fromPos"></param>
+			/// <param name="toPos"></param>
+			/// <param name="effectId"></param>
+			/// <param name="monsterId"></param>
+			/// <exception cref="ArgumentException"></exception>
+			public static void ChainEffect(ICombatEntity entity, string packetString, Position fromPos, Position toPos, int effectId, int monsterId)
+			{
+				if (!ZoneServer.Instance.Data.PacketStringDb.TryFind(packetString, out var packetStringData))
+					throw new ArgumentException($"Unknown packet string '{packetString}'.");
+
+				var packet = new Packet(Op.ZC_NORMAL);
+				packet.PutInt(NormalOp.Zone.ChainEffect);
+
+				packet.PutInt(effectId);
+				packet.PutPosition(fromPos);
+				packet.PutPosition(toPos);
+				packet.PutInt(packetStringData.Id);
+				packet.PutFloat(1f);
+				packet.PutInt(monsterId);
+
+				entity.Map.Broadcast(packet);
+			}
+  
 			/// <summary>
 			/// Purpose unknown. Added for testing purposes, but turned
 			/// out to not be necessary.
