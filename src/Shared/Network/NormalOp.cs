@@ -39,6 +39,7 @@
 			public const int PlayEffect = 0x16;
 			public const int PlayForceEffect = 0x17;
 			public const int UpdateSkillEffect = 0x1F;
+			public const int UpdateModelColor = 0x20;
 			public const int FadeOut = 0x38;
 			public const int BarrackSlotCount = 0x3C;
 			public const int AttackCancel = 0x41;
@@ -53,6 +54,8 @@
 			public const int Cutscene = 0x6B;
 			public const int SetSkillSpeed = 0x77;
 			public const int SetHitDelay = 0x78;
+			public const int Unknow_7D = 0x7D;
+			public const int FloorEffect = 0x81;
 			public const int SpinObject = 0x8A;
 			public const int Unknown_A1 = 0xA1;
 			public const int LeapJump = 0xC2;
@@ -73,6 +76,7 @@
 			public const int UpdateSkillUI = 0x189;
 			public const int AdventureBook = 0x197;
 			public const int Unknown_19B = 0x19E;
+			public const int ForceClientCastSkill = 0x1A3;
 			public const int PadSetModel = 0x1AB;
 			public const int WigVisibilityUpdate = 0x1AC;
 			public const int Unknown_1B4 = 0x1B7;
