@@ -299,15 +299,27 @@ namespace Melia.Zone.World.Actors.Monsters
 			if (this.MonsterType == MonsterType.Mob && beneficiary != null)
 			{
 				this.GetExpToGive(out var exp, out var jobExp);
-
 				this.DropItems(beneficiary);
-				beneficiary?.GiveExp(exp, jobExp, this);
+				this.DistributeExp(beneficiary, exp, jobExp);
 			}
 
 			this.Died?.Invoke(this, killer);
 			ZoneServer.Instance.ServerEvents.OnEntityKilled(this, killer);
 
 			Send.ZC_DEAD(this);
+		}
+
+		/// <summary>
+		/// Distributes experience
+		/// </summary>
+		private void DistributeExp(Character character, long exp, long classExp)
+		{
+			var party = character.Connection.Party;
+
+			if (party != null)
+				party.GiveExp(character, exp, classExp, this);
+			else
+				character?.GiveExp(exp, classExp, this);
 		}
 
 		/// <summary>
@@ -592,6 +604,13 @@ namespace Melia.Zone.World.Actors.Monsters
 
 				if (autoloot)
 				{
+					var party = killer.Connection.Party;
+
+					if (party != null)
+						party.GiveItem(killer, dropItem, InventoryAddType.PickUp);
+					else
+						killer.Inventory.Add(dropItem, InventoryAddType.PickUp);
+
 					killer.Inventory.Add(dropItem, InventoryAddType.PickUp);
 					continue;
 				}
