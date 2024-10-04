@@ -276,7 +276,7 @@ namespace Melia.Zone.Scripting.AI
 		/// <param name="minDistance">The minimum distance to the target the AI attempts to stay in.</param>
 		/// <param name="matchSpeed">If true, the entity's speed will be changed to match the target's.</param>
 		/// <returns></returns>
-		protected IEnumerable Follow(ICombatEntity followTarget, float minDistance = 50, bool matchSpeed = false)
+		protected IEnumerable Follow(ICombatEntity followTarget, float minDistance = 50, bool matchSpeed = false, bool teleport = true)
 		{
 			var movement = this.Entity.Components.Get<MovementComponent>();
 			var targetWasInRange = false;
@@ -327,7 +327,7 @@ namespace Melia.Zone.Scripting.AI
 				var teleportDistance = minDistance * 4;
 				var distance = followTarget.Position.Get2DDistance(this.Entity.Position);
 
-				if (distance > teleportDistance)
+				if (teleport && distance > teleportDistance)
 				{
 					movement.Stop();
 

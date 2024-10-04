@@ -1,14 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using Melia.Shared.Data.Database;
 using Melia.Shared.Network;
 using Melia.Shared.Game.Const;
 using Melia.Shared.World;
 using Melia.Zone.Scripting;
 using Melia.Zone.Scripting.AI;
-using Melia.Zone.Skills.SplashAreas;
 using Melia.Zone.World.Actors;
 using Melia.Zone.World.Actors.Characters;
 using Melia.Zone.World.Actors.CombatEntities.Components;
@@ -42,6 +40,13 @@ namespace Melia.Zone.World.Maps
 		/// <para>Value: <see cref="Character"/></para>
 		/// </summary>
 		private readonly Dictionary<int, Character> _characters = new();
+
+		/// <summary>
+		/// Collection of dummy characters.
+		/// <para>Key: <see cref="Character.Handle"/></para>
+		/// <para>Value: <see cref="Character"/></para>
+		/// </summary>
+		private readonly Dictionary<int, Character> _dummies = new Dictionary<int, Character>();
 
 		/// <summary>
 		/// Collection of monsters.
@@ -196,6 +201,9 @@ namespace Melia.Zone.World.Maps
 				lock (_characters)
 					_updateEntities.AddRange(_characters.Values);
 
+				lock (_dummies)
+					_updateEntities.AddRange(_dummies.Values);
+
 				lock (_pads)
 					_updateEntities.AddRange(_pads.Values);
 
@@ -271,6 +279,24 @@ namespace Melia.Zone.World.Maps
 		}
 
 		/// <summary>
+		/// Adds a dummy character to map.
+		/// </summary>
+		/// <param name="character"></param>
+		public void AddDummyCharacter(Character character)
+		{
+			character.Map = this;
+
+			lock (_dummies)
+				_dummies[character.Handle] = character;
+
+			if (character is ICombatEntity)
+			{
+				lock (_combatEntities)
+					_combatEntities[character.Handle] = character;
+			}
+		}
+
+		/// <summary>
 		/// Removes character from map.
 		/// </summary>
 		/// <param name="character"></param>
@@ -288,6 +314,24 @@ namespace Melia.Zone.World.Maps
 		}
 
 		/// <summary>
+		/// Removes a dummy character from map.
+		/// </summary>
+		/// <param name="entity"></param>
+		public void RemoveDummyCharacter(Character character)
+		{
+			lock (_dummies)
+				_dummies.Remove(character.Handle);
+
+			if (character is ICombatEntity)
+			{
+				lock (_combatEntities)
+					_combatEntities.Remove(character.Handle);
+			}
+
+			character.Map = null;
+		}
+
+		/// <summary>
 		/// Returns character by handle, or null if it doesn't exist.
 		/// </summary>
 		/// <param name="handle"></param>
@@ -297,6 +341,19 @@ namespace Melia.Zone.World.Maps
 			Character result;
 			lock (_characters)
 				_characters.TryGetValue(handle, out result);
+			return result;
+		}
+
+		/// <summary>
+		/// Returns a dummy character by handle, or null if it doesn't exist.
+		/// </summary>
+		/// <param name="handle"></param>
+		/// <returns></returns>
+		public Character GetDummyCharacter(int handle)
+		{
+			Character result;
+			lock (_dummies)
+				_dummies.TryGetValue(handle, out result);
 			return result;
 		}
 
@@ -496,6 +553,15 @@ namespace Melia.Zone.World.Maps
 				}
 			}
 
+			lock (_dummies)
+			{
+				foreach (var character in _dummies.Values)
+				{
+					if (character is TActor actor && area.IsInside(actor.Position))
+						result.Add(actor);
+				}
+			}
+
 			return result;
 		}
 
@@ -580,6 +646,12 @@ namespace Melia.Zone.World.Maps
 					return entity;
 			}
 
+			lock (_dummies)
+			{
+				if (_dummies.TryGetValue(handle, out var entity))
+					return entity;
+			}
+
 			return null;
 		}
 
@@ -617,6 +689,15 @@ namespace Melia.Zone.World.Maps
 			lock (_characters)
 			{
 				if (_characters.TryGetValue(handle, out var character))
+				{
+					actor = character;
+					return true;
+				}
+			}
+
+			lock (_dummies)
+			{
+				if (_dummies.TryGetValue(handle, out var character))
 				{
 					actor = character;
 					return true;
